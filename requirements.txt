@@ -1,0 +1,8 @@
+lancedb
+pyarrow
+sentence-transformers
+watchdog
+fastapi
+uvicorn
+requests
+mcp
