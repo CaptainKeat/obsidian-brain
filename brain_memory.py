@@ -14,13 +14,14 @@ import os
 import re
 import shutil
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Mapping
 
 
 DEFAULT_ROOTS = {
-    "vault": Path(os.environ.get("VAULT_PATH", str(Path(__file__).resolve().parent / "examples" / "vault"))),
-    "projects": Path(os.environ.get("PROJECTS_PATH", str(Path(__file__).resolve().parent / "examples" / "projects"))),
+    "vault": Path(os.environ.get("VAULT_PATH", str(Path(__file__).parent / "examples" / "vault"))),
+    "projects": Path(os.environ.get("PROJECTS_PATH", str(Path(__file__).parent / "examples" / "projects"))),
 }
 
 MEMORY_FOLDERS = {
@@ -239,6 +240,55 @@ def _atomic_write(target: Path, content: str) -> None:
         raise
 
 
+
+@contextmanager
+def _note_lock(target):
+    """Serialize cooperating MCP processes across read/check/write operations."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = target.with_suffix(target.suffix + ".lock")
+    with open(lock_path, "a+b") as handle:
+        handle.seek(0, 2)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _replace_metadata(text, updates):
+    """Update selected top-level YAML fields while retaining unrelated raw YAML."""
+    match = re.match(r"^---[^\S\n]*\n(.*?)\n---[^\S\n]*\n?", text, re.DOTALL)
+    if not match:
+        return _metadata_block(updates) + text
+    lines = match.group(1).splitlines(keepends=True)
+    kept = []
+    skipping = False
+    for line in lines:
+        field = re.match(r"^([A-Za-z_][\w-]*):", line)
+        if field:
+            skipping = field.group(1) in updates
+        elif line.strip() and not line[0].isspace() and not line.startswith("#"):
+            skipping = False
+        if not skipping:
+            kept.append(line)
+    header = "".join(kept).rstrip() + "\n"
+    header += "\n".join(f"{key}: {_json_yaml(value)}" for key, value in updates.items())
+    return "---\n" + header + "\n---\n" + text[match.end():]
+
+
 def update_note(
     path: str,
     body: str,
@@ -264,96 +314,118 @@ def update_note(
     if mode not in {"append", "replace_body"}:
         raise ValueError("mode must be append or replace_body")
     target = resolve_note_path(path, root, roots)
-    original = target.read_text(encoding="utf-8")
-    original_hash = _hash(original)
-    if expected_sha256 and expected_sha256 != original_hash:
-        raise RuntimeError("Note changed since it was read; fetch it again before updating")
-    metadata, old_body = parse_frontmatter(original)
-    if mode == "replace_body":
-        if not expected_sha256:
-            raise ValueError("replace_body requires expected_sha256 from obsidian_get_note")
-        stamp = _now().strftime("%Y%m%d-%H%M%S")
-        backup = target.with_suffix(target.suffix + f".bak-{stamp}")
-        shutil.copy2(target, backup)
-        new_text = _metadata_block(metadata) + body.strip() + "\n"
-    else:
-        backup = None
-        label = re.sub(r"[\r\n#]+", " ", heading).strip() or "Update"
-        new_text = original.rstrip() + f"\n\n## {label} — {_now().isoformat(timespec='seconds')}\n\n{body.strip()}\n"
-    _atomic_write(target, new_text)
-    result = note_info(path, root, roots)
-    result.update({"mode": mode, "previous_sha256": original_hash, "backup": str(backup) if backup else None})
-    return result
+    with _note_lock(target):
+        original = target.read_text(encoding="utf-8")
+        original_hash = _hash(original)
+        if expected_sha256 and expected_sha256 != original_hash:
+            raise RuntimeError("Note changed since it was read; fetch it again before updating")
+        metadata, old_body = parse_frontmatter(original)
+        if mode == "replace_body":
+            if not expected_sha256:
+                raise ValueError("replace_body requires expected_sha256 from obsidian_get_note")
+            stamp = _now().strftime("%Y%m%d-%H%M%S-%f")
+            backup = target.with_suffix(target.suffix + f".bak-{stamp}")
+            shutil.copy2(target, backup)
+            # Preserve arbitrary original YAML, including nested fields/comments.
+            prefix = original[:len(original) - len(old_body)]
+            new_text = prefix + body.strip() + "\n"
+        else:
+            backup = None
+            label = re.sub(r"[\r\n#]+", " ", heading).strip() or "Update"
+            new_text = original.rstrip() + f"\n\n## {label} — {_now().isoformat(timespec='seconds')}\n\n{body.strip()}\n"
+        if _hash(target.read_text(encoding="utf-8")) != original_hash:
+            raise RuntimeError("Note changed while updating; fetch it again before updating")
+        _atomic_write(target, new_text)
+        result = note_info(path, root, roots)
+        result.update({"mode": mode, "previous_sha256": original_hash, "backup": str(backup) if backup else None})
+        return result
 
 
 def save_memory(
-    title: str,
-    body: str,
-    *,
-    memory_type: str,
-    status: str = "verified",
-    confidence: str = "medium",
-    project: str = "",
-    evidence: str = "",
-    applies_when: str = "",
-    sources: list[str] | None = None,
-    tags: list[str] | None = None,
-    valid_until: str = "",
-    supersedes: list[str] | None = None,
+    title: str, body: str, *, memory_type: str,
+    status: str | None = None, confidence: str | None = None,
+    project: str | None = None, evidence: str | None = None,
+    applies_when: str | None = None, sources: list[str] | None = None,
+    tags: list[str] | None = None, valid_until: str | None = None,
+    supersedes: list[str] | None = None, expected_sha256: str = "",
     roots: Mapping[str, Path] | None = None,
 ) -> dict[str, Any]:
+    """Revise current metadata while preserving history; None preserves, empty clears.
+
+    Revisions require the hash returned by read_note. No automatic historical
+    note rewrite or reverse-link mutation occurs.
+    """
     roots = roots or DEFAULT_ROOTS
     if memory_type not in MEMORY_FOLDERS:
         raise ValueError(f"Unknown memory_type; expected one of {sorted(MEMORY_FOLDERS)}")
-    if status not in VALID_STATUSES:
-        raise ValueError(f"Unknown status; expected one of {sorted(VALID_STATUSES)}")
-    if confidence not in VALID_CONFIDENCE:
-        raise ValueError(f"Unknown confidence; expected one of {sorted(VALID_CONFIDENCE)}")
-    if status == "verified" and not (evidence.strip() or sources):
-        raise ValueError("Verified memories require evidence or at least one source")
     if not title.strip() or not body.strip():
         raise ValueError("Memory title and body are required")
-    folder = Path("Cowork") / MEMORY_FOLDERS[memory_type]
-    relative = folder / f"{_slug(title)}.md"
+    if len(body) > 200_000:
+        raise ValueError("Memory body is too large")
+    if valid_until and not _parse_date(valid_until):
+        raise ValueError("valid_until must be an ISO date or datetime")
+    relative = Path("Cowork") / MEMORY_FOLDERS[memory_type] / f"{_slug(title)}.md"
     target = resolve_note_path(str(relative), "vault", roots, must_exist=False)
-    now = _now().isoformat(timespec="seconds")
-    if target.exists():
-        update = (
-            f"### Memory revision\n\n{body.strip()}\n\n"
-            f"**Status:** {status}  \n**Confidence:** {confidence}\n"
-        )
-        if evidence:
-            update += f"\n**Evidence:** {evidence.strip()}\n"
-        if sources:
-            update += "\n**Sources:**\n" + "\n".join(f"- {source}" for source in sources)
-        return update_note(str(relative), update, root="vault", mode="append",
-                           heading="Revision", roots=roots)
-    metadata = {
-        "title": title.strip(),
-        "type": memory_type,
-        "status": status,
-        "confidence": confidence,
-        "created": now,
-        "verified_at": now if status == "verified" else "",
-        "project": project.strip(),
-        "source": "cowork",
-        "tags": sorted(set(["cowork", memory_type] + (tags or []))),
-        "sources": sources or [],
-        "evidence": evidence.strip(),
-        "applies_when": applies_when.strip(),
-        "valid_until": valid_until.strip(),
-        "supersedes": supersedes or [],
-    }
-    content = _metadata_block(metadata)
-    content += f"# {title.strip()}\n\n## Lesson\n\n{body.strip()}\n"
-    if applies_when:
-        content += f"\n## Applies when\n\n{applies_when.strip()}\n"
-    if evidence:
-        content += f"\n## Evidence\n\n{evidence.strip()}\n"
-    if sources:
-        content += "\n## Sources\n\n" + "\n".join(f"- {source}" for source in sources) + "\n"
-    _atomic_write(target, content)
-    return note_info(str(relative), "vault", roots)
+    with _note_lock(target):
+        original = target.read_text(encoding="utf-8") if target.exists() else ""
+        old, _ = parse_frontmatter(original)
+        if original:
+            if not expected_sha256:
+                raise ValueError("Revising an existing memory requires expected_sha256 from obsidian_get_note")
+            if expected_sha256 != _hash(original):
+                raise RuntimeError("Note changed since it was read; fetch it again before saving")
+            if old.get("title") != title.strip() or old.get("type") != memory_type:
+                raise ValueError("Memory filename collision; choose a distinct title")
+        elif expected_sha256:
+            raise RuntimeError("Expected an existing memory, but it no longer exists")
+        actual_status = status if status is not None else old.get("status", "verified")
+        actual_confidence = confidence if confidence is not None else old.get("confidence", "medium")
+        if actual_status not in VALID_STATUSES:
+            raise ValueError(f"Unknown status; expected one of {sorted(VALID_STATUSES)}")
+        if actual_confidence not in VALID_CONFIDENCE:
+            raise ValueError(f"Unknown confidence; expected one of {sorted(VALID_CONFIDENCE)}")
+        if actual_status == "verified" and not ((evidence or "").strip() or sources):
+            raise ValueError("Verified memories require fresh evidence or at least one source")
+        now = _now().isoformat(timespec="seconds")
+        metadata = {"title": title.strip(), "type": memory_type,
+                    "status": actual_status, "confidence": actual_confidence,
+                    "updated_at": now,
+                    "verified_at": now if actual_status == "verified" else ""}
+        optional = {"project": project, "evidence": evidence, "applies_when": applies_when,
+                    "sources": sources, "tags": tags, "valid_until": valid_until,
+                    "supersedes": supersedes}
+        for key, value in optional.items():
+            if value is not None:
+                metadata[key] = value.strip() if isinstance(value, str) else value
+            elif not original:
+                metadata[key] = [] if key in {"sources", "tags", "supersedes"} else ""
+        if not original or tags is not None:
+            metadata["tags"] = sorted(set(["cowork", memory_type] + (tags or [])))
+        backup = None
+        if original:
+            backup = target.with_suffix(target.suffix + ".bak-" + _now().strftime("%Y%m%d-%H%M%S-%f"))
+            shutil.copy2(target, backup)
+            content = _replace_metadata(original, metadata).rstrip()
+            content += f"\n\n## Revision — {now}\n\n{body.strip()}\n"
+            content += "\nRevision metadata: " + json.dumps(metadata, ensure_ascii=False) + "\n"
+        else:
+            metadata.update({"created": now, "source": "cowork"})
+            content = _metadata_block(metadata) + f"# {title.strip()}\n\n## Lesson\n\n{body.strip()}\n"
+            if applies_when:
+                content += f"\n## Applies when\n\n{applies_when.strip()}\n"
+            if evidence:
+                content += f"\n## Evidence\n\n{evidence.strip()}\n"
+            if sources:
+                content += "\n## Sources\n\n" + "\n".join(f"- {source}" for source in sources) + "\n"
+        # Recheck after preparing the content to catch non-cooperating editor writes.
+        if original and _hash(target.read_text(encoding="utf-8")) != _hash(original):
+            raise RuntimeError("Note changed while saving; fetch it again before saving")
+        _atomic_write(target, content)
+        result = note_info(str(relative), "vault", roots)
+        result.update({"previous_sha256": _hash(original) if original else None,
+                       "backup": str(backup) if backup else None})
+        return result
+
 
 
 def record_feedback(

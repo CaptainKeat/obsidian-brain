@@ -1,5 +1,5 @@
 """
-obsidian_brain_mcp.py - MCP server exposing the user's Obsidian RAG brain to ANY
+obsidian_brain_mcp.py - MCP server exposing a local Obsidian RAG brain to ANY
 Cowork / Claude Desktop session.
 
 Installed as a Claude Desktop extension (.mcpb), every new session gets these
@@ -38,8 +38,9 @@ mcp = FastMCP("obsidian-brain")
 
 def _rag_up(timeout=3):
     try:
-        requests.get(f"{RAG_URL}/health", timeout=timeout)
-        return True
+        response = requests.get(f"{RAG_URL}/health", timeout=timeout)
+        response.raise_for_status()
+        return response.json().get("status") == "ok"
     except Exception:
         return False
 
@@ -82,22 +83,25 @@ def _memory_tag(path, root):
 
 @mcp.tool()
 def obsidian_search(query: str, k: int = 6, include: str = "", exclude: str = "VTuber-Memory",
-                    roots: str = "", expand: bool = False, rerank: bool = False) -> str:
-    """Search the user's Obsidian Knowledge-Base + project docs (his local hybrid RAG "brain").
+                    roots: str = "", expand: bool = False, rerank: bool = False,
+                    mode: str = "current") -> str:
+    """Search the configured Markdown vault and project documents.
     Recall notes, decisions, project context, past setups, gotchas, and patterns - anything
     he's written down. Hybrid keyword + vector search; each hit shows its source path,
     retrieval path, and available type/status/freshness metadata.
 
     Args:
         query: what to look up (natural language; exact terms/acronyms work too).
-        k: how many snippets to return (default 6).
+        k: how many distinct notes to return (1-30, default 6); expansion adds at most k links.
         include: comma-separated folders to restrict to (e.g. "Patterns,Gotchas,Projects").
         exclude: comma-separated folders to skip (default "VTuber-Memory", the VTuber's chatter).
         roots: comma-separated index roots to search. Valid roots are "vault" and "projects". Empty searches both.
         expand: also pull in notes linked via [[wikilinks]] from the top hits (graph expansion).
         rerank: opt into CPU cross-encoder reranking for a difficult, high-value lookup.
+        mode: current hides explicitly stale/expired/superseded notes; all includes history.
+            Current does not mean verified. Read warnings and sources.
     """
-    params = {"q": query, "k": k}
+    params = {"q": query, "k": k, "mode": mode}
     if include:
         params["include"] = include
     if exclude:
@@ -126,7 +130,10 @@ def obsidian_search(query: str, k: int = 6, include: str = "", exclude: str = "V
         path = h.get("path", "?")
         via = h.get("via", "")
         snip = (h.get("snippet", "") or "").strip().replace("\n", " ")
-        via_tag = f" ({via})" if via else ""
+        via_tag = f" ({via}; reranked={h.get('reranked', False)})" if via else ""
+        warnings = "; ".join(h.get("warnings", []))
+        if warnings:
+            snip += f"\n  Warnings: {warnings}"
         out.append(f"[{root}] {path}{via_tag}{_memory_tag(path, root)}\n  {snip}")
     return "\n\n".join(out)
 
@@ -154,10 +161,11 @@ def obsidian_get_note(path: str, root: str = "vault", section: str = "",
 
 @mcp.tool()
 def obsidian_save_memory(title: str, body: str, memory_type: str,
-                         status: str = "verified", confidence: str = "medium",
-                         project: str = "", evidence: str = "",
-                         applies_when: str = "", sources: str = "", tags: str = "",
-                         valid_until: str = "", supersedes: str = "") -> str:
+                         status: str | None = None, confidence: str | None = None,
+                         project: str | None = None, evidence: str | None = None,
+                         applies_when: str | None = None, sources: str | None = None, tags: str | None = None,
+                         valid_until: str | None = None, supersedes: str | None = None,
+                         expected_sha256: str = "") -> str:
     """Save a typed durable memory with provenance instead of raw conversation.
 
     Verified memories require evidence or a source. Files are routed under
@@ -177,8 +185,12 @@ def obsidian_save_memory(title: str, body: str, memory_type: str,
         tags: comma-separated tags.
         valid_until: optional ISO date/time after which re-verification is required.
         supersedes: comma-separated older note links or paths this replaces.
+        expected_sha256: required when the title already exists; read the note first.
+            Omitted/null optional fields preserve existing metadata; empty values clear it.
+            New memories default to verified and require evidence; revisions need fresh
+            evidence when verified. Revision history and a backup are retained.
     """
-    split = lambda value: [part.strip() for part in value.split(",") if part.strip()]
+    split = lambda value: None if value is None else [part.strip() for part in value.split(",") if part.strip()]
     try:
         result = brain_memory.save_memory(
             title,
@@ -193,6 +205,7 @@ def obsidian_save_memory(title: str, body: str, memory_type: str,
             tags=split(tags),
             valid_until=valid_until,
             supersedes=split(supersedes),
+            expected_sha256=expected_sha256,
         )
         return "Saved typed memory:\n" + json.dumps(result, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -254,7 +267,7 @@ def obsidian_record_feedback(path: str, outcome: str, detail: str,
 
 @mcp.tool()
 def obsidian_save_note(title: str, body: str) -> str:
-    """Legacy free-form write into the user's Cowork memory folder.
+    """Legacy free-form write into the configured memory folder.
 
     Prefer obsidian_save_memory for durable facts, procedures, decisions, incidents,
     worked examples, and gotchas because it records status, evidence, and applicability.
@@ -287,7 +300,9 @@ def obsidian_health() -> str:
     try:
         h = requests.get(f"{RAG_URL}/health", timeout=5).json()
         return (f"up{started}: {h.get('by_root')} | {h.get('chunks')} chunks | model {h.get('model')} "
-                f"| rerank={h.get('rerank')} | excluded={h.get('default_exclude')}")
+                f"| rerank={h.get('rerank')} | excluded={h.get('default_exclude')} "
+                f"| mcp_version=3.0.0 | server_version={h.get('version', 'unknown')} "
+                f"| capabilities={h.get('capabilities', [])} | index_state={h.get('index_state', {})}")
     except Exception as e:
         return f"down ({e})"
 

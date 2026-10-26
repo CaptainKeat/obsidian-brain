@@ -88,7 +88,7 @@ Set matching `VAULT_PATH` and `PROJECTS_PATH` values for **both** the indexer an
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-The five note-layer tests passed using temporary synthetic files. They cover path escapes, section retrieval, typed metadata, update hashes and append-only feedback. They can also run without the embedding dependencies using a standard Python interpreter.
+The review candidate adds dependency-free revision and retrieval regression tests using temporary synthetic notes and a fake vector backend. They cover root scoping, path escapes, hash conflicts, retained revision metadata, current/history filtering, note identity, linked retrieval, lexical candidate starvation and meaningful excerpts. The test harness extracts selected production functions with Python AST; it does not import the indexer's model/database startup. These checks do not establish live embedding, model, MCP or watcher integration.
 
 - **Connection refused:** start the indexer and check its terminal output and `/health` endpoint.
 - **No search results:** check the configured roots and wait for initial indexing to finish.
@@ -98,3 +98,25 @@ The five note-layer tests passed using temporary synthetic files. They cover pat
 The HTTP service is for trusted local clients and binds to loopback. It has no public-server authentication layer. See [SECURITY.md](SECURITY.md) before using private data.
 
 Contributions are welcome: reproducible dependency installs, indexer integration tests, cross-platform startup and better documentation. Original source is [MIT licensed](LICENSE); dependencies and model weights retain their own licenses.
+
+
+## Typed revisions and retrieval review candidate
+
+This local candidate extends the September 8 sanitized release. Revisions require
+the hash of the current note, preserve history and support explicit typed metadata.
+Current-mode retrieval excludes stale/superseded records, keeps root identities
+distinct and returns body evidence rather than punctuation-only excerpts. Hybrid
+fusion retains lexical candidates that were previously lost before materialization.
+
+Use synthetic data first. To run the model-free revision demonstration:
+
+```powershell
+python examples/revision_demo.py
+python -m unittest discover -s tests -v
+```
+
+The demonstration uses a temporary directory and never connects to the indexer,
+loads a model or writes to a real vault. The indexer, if deliberately started,
+still needs its documented dependencies and model download. No live service or
+embedding test was run for this review candidate. Do not infer production or
+enterprise readiness from these source tests.

@@ -32,7 +32,11 @@ def tokenize(text: str) -> list[str]:
     """Lowercase word/number tokens, minus a tiny stoplist. Keeps short acronyms."""
     if not text:
         return []
-    return [t for t in _WORD.findall(text.lower()) if t not in _STOP and len(t) > 1]
+    words = [t for t in _WORD.findall(text.lower()) if t not in _STOP and len(t) > 1]
+    # Drive letters carry identity in Windows setup recall; do not discard them
+    # as generic one-letter words. Match both D:\\ and "D-drive" / "D drive".
+    drives = re.findall(r"\b([a-z])(?=:|[\s-]+drive\b)", text.lower())
+    return words + ["drive_" + letter for letter in drives]
 
 
 # --- BM25 (Okapi) ----------------------------------------------------------

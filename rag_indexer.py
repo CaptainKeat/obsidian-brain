@@ -30,7 +30,7 @@ Pure-python search helpers live in brain_search.py (import-safe, unit-tested).
 
 Roots:
   - vault    : the whole Obsidian Knowledge-Base (all .md). LIVE-watched.
-  - projects : examples/projects project docs, shallow only (depth<=2). Refreshed on
+  - projects : configured project docs, shallow only (depth<=2). Refreshed on
                startup + POST /reindex (not live-watched).
 
 Env:
@@ -60,13 +60,15 @@ import pyarrow as pa
 from sentence_transformers import SentenceTransformer
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import uvicorn
 
 import brain_search as bs
+import brain_memory as bm
+import brain_retrieval as br
 
-VAULT = os.environ.get("VAULT_PATH", str(Path(__file__).resolve().parent / "examples" / "vault"))
-PROJECTS = os.environ.get("PROJECTS_PATH", str(Path(__file__).resolve().parent / "examples" / "projects"))
+VAULT = os.environ.get("VAULT_PATH", str(Path(__file__).parent / "examples" / "vault"))
+PROJECTS = os.environ.get("PROJECTS_PATH", str(Path(__file__).parent / "examples" / "projects"))
 PROJECTS_MAX_DEPTH = int(os.environ.get("PROJECTS_MAX_DEPTH", "2"))
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "lancedb"))
 PORT = int(os.environ.get("RAG_PORT", "5180"))
@@ -123,8 +125,11 @@ _lock = threading.Lock()
 
 # --- in-memory lexical corpus + link graph (kept in sync with the table) ----
 LEX_DOCS = {}     # doc_id -> [ {root, path, chunk}, ... ]
-SLUG2META = {}    # note slug -> {path, root, first}  (for [[link]] expansion)
-LINKS = {}        # note slug -> set(linked slugs)
+NOTE_META = {}
+_lex_lock = threading.RLock()
+_index_state = {"last_scan_started": None, "last_scan_completed": None,
+                "last_index_error": None, "last_search_error": None}
+_watcher_handler = None
 _lex = {"bm25": None, "flat": [], "dirty": True}
 _reranker = {"obj": None, "tried": False}
 _last_hash = {}   # doc_id -> sha256 hex of the last-indexed text (in-memory)
@@ -255,34 +260,44 @@ def chunk_text(text, size=600, overlap=80):
 # --- lexical / graph bookkeeping -------------------------------------------
 
 def register_lex(doc_id, root_label, rel, text, chunks=None):
-    """Mirror a doc into the in-memory lexical corpus + link graph."""
     if chunks is None:
         chunks = list(chunk_text(text))
-    LEX_DOCS[doc_id] = [{"root": root_label, "path": rel, "chunk": c} for c in chunks]
-    slug = bs.path_to_slug(rel)
-    LINKS[slug] = bs.parse_wikilinks(text)
-    SLUG2META[slug] = {"path": rel, "root": root_label, "first": (chunks[0] if chunks else "")}
-    _lex["dirty"] = True
+    note = br.make_note(root_label, rel, text)
+    note["id"] = doc_id
+    rows = []
+    for chunk in chunks:
+        body = br.body_chunk(chunk, note)
+        if body:
+            rows.append({"root": root_label, "path": rel, "chunk": chunk,
+                         "search_text": str(note["metadata"].get("title", "")) + "\n" + body})
+    with _lex_lock:
+        LEX_DOCS[doc_id] = rows
+        NOTE_META[br.identity(root_label, rel)] = note
+        _lex["dirty"] = True
 
 
 def unregister_lex(doc_id, rel):
-    LEX_DOCS.pop(doc_id, None)
-    slug = bs.path_to_slug(rel)
-    LINKS.pop(slug, None)
-    SLUG2META.pop(slug, None)
-    _lex["dirty"] = True
+    with _lex_lock:
+        LEX_DOCS.pop(doc_id, None)
+        for key in [key for key, note in NOTE_META.items() if note["id"] == doc_id]:
+            NOTE_META.pop(key, None)
+        _lex["dirty"] = True
 
 
 def _ensure_lex():
-    if not _lex["dirty"]:
-        return
-    flat = []
-    for rows in LEX_DOCS.values():
-        flat.extend(rows)
-    bm = bs.BM25().build([bs.tokenize(x["chunk"]) for x in flat]) if flat else None
-    _lex["flat"] = flat
-    _lex["bm25"] = bm
-    _lex["dirty"] = False
+    with _lex_lock:
+        if not _lex["dirty"]:
+            return
+        flat = [row for rows in LEX_DOCS.values() for row in rows]
+        bm25 = bs.BM25().build([bs.tokenize(x["search_text"]) for x in flat]) if flat else None
+        titles = list(NOTE_META)
+        title_bm25 = bs.BM25().build([bs.tokenize(str(NOTE_META[key]["metadata"].get(
+            "title", Path(NOTE_META[key]["path"]).stem))) for key in titles]) if titles else None
+        by_note = {}
+        for i, item in enumerate(flat):
+            by_note.setdefault(br.identity(item["root"], item["path"]), []).append(i)
+        _lex.update({"flat": flat, "bm25": bm25, "titles": titles,
+                     "title_bm25": title_bm25, "by_note": by_note, "dirty": False})
 
 
 def _get_reranker():
@@ -320,6 +335,7 @@ def index_file(abspath, root=None, mtime=None, text=None):
         try:
             text = Path(abspath).read_text(encoding="utf-8", errors="replace")
         except Exception as e:
+            _index_state["last_index_error"] = f"{abspath}: {e}"
             print(f"[rag] read fail {abspath}: {e}", flush=True)
             return 0
 
@@ -385,6 +401,8 @@ def delete_file(abspath, root=None):
 
 
 def full_scan():
+    _index_state["last_scan_started"] = time.time()
+    _index_state["last_index_error"] = None
     tbl = _get_table()
     try:
         known_rows = tbl.search().limit(5_000_000).select(["id", "mtime"]).to_list()
@@ -408,8 +426,9 @@ def full_scan():
             # read once; used for embedding (if changed) AND lexical/graph (always)
             try:
                 text = Path(f).read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                text = ""
+            except Exception as exc:
+                _index_state["last_index_error"] = f"{f}: {exc}"
+                continue
             if doc_id in known and abs(known[doc_id] - mt) < 1e-6:
                 skipped += 1
                 register_lex(doc_id, root["label"], rel, text)  # keep lexicon warm
@@ -428,9 +447,12 @@ def full_scan():
             t.delete(f"id = '{_sql_quote(sid)}'")
     for sid in stale:
         _last_hash.pop(sid, None)
+        unregister_lex(sid, "")
     _lex["dirty"] = True
     print(f"[rag] scan: {per_root} | embedded {embedded}, skipped {skipped}, "
           f"purged {len(stale)} | lex_docs {len(LEX_DOCS)}", flush=True)
+    if not _index_state["last_index_error"]:
+        _index_state["last_scan_completed"] = time.time()
     return per_root, embedded, skipped, len(stale)
 
 
@@ -572,114 +594,166 @@ class VaultHandler(FileSystemEventHandler):
                     else:
                         print(f"[rag] reindexed {path} ({n} chunks)", flush=True)
                 except Exception as ex:
+                    _index_state["last_index_error"] = f"{path}: {ex}"
                     print(f"[rag] reindex fail {path}: {ex}", flush=True)
 
 
 # --- search ----------------------------------------------------------------
 
-def _key(path, chunk):
-    return path + "\x00" + chunk
-
-
 def do_search(q, k=5, include=None, exclude=None, roots=None,
-              rerank=None, expand=None, candidates=None):
+              rerank=None, expand=None, candidates=None, mode="current"):
+    if not q.strip():
+        return []
+    if not 1 <= k <= 30:
+        raise ValueError("k must be between 1 and 30")
+    if mode not in {"current", "all"}:
+        raise ValueError("mode must be current or all")
     include = bs.parse_csv_param(include)
     exclude = bs.parse_csv_param(exclude) + list(DEFAULT_EXCLUDE)
     roots = set(bs.parse_csv_param(roots))
-    use_rerank = RERANK if rerank is None else (bool(int(rerank)) if str(rerank).isdigit() else bool(rerank))
-    use_expand = EXPAND_DEFAULT if expand is None else (bool(int(expand)) if str(expand).isdigit() else bool(expand))
-    cand = int(candidates) if candidates else max(40, k * 8)
+    if roots - {"vault", "projects"}:
+        raise ValueError("roots must contain vault and/or projects")
+    use_rerank = RERANK if rerank is None else str(rerank).lower() in {"1", "true"}
+    use_expand = EXPAND_DEFAULT if expand is None else str(expand).lower() in {"1", "true"}
+    cand = min(1000, max(k, int(candidates) if candidates else max(80, k * 12)))
+    with _lex_lock:
+        _ensure_lex()
+        notes = dict(NOTE_META)
+        flat, bm25 = _lex["flat"], _lex["bm25"]
+        titles, title_bm25 = _lex["titles"], _lex["title_bm25"]
+        by_note = _lex["by_note"]
+    superseded = br.superseded_ids(notes)
+    allowed = {key: note for key, note in notes.items()
+               if (not roots or note["root"] in roots)
+               and bs.folder_match(note["path"], include, exclude)
+               and (mode == "all" or br.is_current(note, key in superseded))}
+    if not allowed:
+        return []
+    pool, vorder, lorder = {}, [], []
+    errors = []
 
-    pool = {}
-    vorder = []
+    def add(item, order, method):
+        doc = br.identity(item["root"], item["path"])
+        if doc not in allowed:
+            return
+        chunk = item["chunk"]
+        evidence = br.body_chunk(chunk, allowed[doc])
+        if not evidence:
+            return
+        key = (doc, chunk)
+        p = pool.setdefault(key, {"root": item["root"], "path": item["path"],
+                                  "chunk": chunk, "evidence": evidence, "methods": set()})
+        p["methods"].add(method)
+        if key not in order:
+            order.append(key)
+
     emb = model.encode(q, normalize_embeddings=True).astype("float32").tolist()
+    # Filter before top-N; lexical and vector search use the same eligible notes.
+    where = "id IN (" + ",".join("'" + _sql_quote(n["id"]) + "'" for n in allowed.values()) + ")"
     with _lock:
         try:
-            vrows = _get_table().search(emb).limit(cand).to_list()
-        except Exception:
+            # Duplicate and metadata-only chunks should not exhaust the note
+            # candidate window. Overfetch is bounded and keeps existing vectors.
+            vrows = _get_table().search(emb).where(where, prefilter=True).limit(min(1000, cand * 4)).to_list()
+        except Exception as exc:
             vrows = []
-    for r in vrows:
-        path, chunk = r.get("path", ""), r.get("chunk", "")
-        if roots and r.get("root") not in roots:
-            continue
-        if not bs.folder_match(path, include, exclude):
-            continue
-        key = _key(path, chunk)
-        pool.setdefault(key, {"root": r.get("root"), "path": path, "chunk": chunk})
-        vorder.append(key)
-
-    _ensure_lex()
-    lorder = []
-    if _lex["bm25"]:
-        for idx, _sc in _lex["bm25"].top_n(q, cand):
-            item = _lex["flat"][idx]
-            path, chunk = item["path"], item["chunk"]
-            if roots and item["root"] not in roots:
-                continue
-            if not bs.folder_match(path, include, exclude):
-                continue
-            key = _key(path, chunk)
-            pool.setdefault(key, {"root": item["root"], "path": path, "chunk": chunk})
-            lorder.append(key)
-
+            errors.append("vector retrieval unavailable; using lexical results")
+            _index_state["last_search_error"] = str(exc)
+    for item in vrows:
+        add(item, vorder, "vector")
+    chunk_scores = bm25.score(q) if bm25 else []
+    if bm25:
+        scored = [(idx, score) for idx, score in enumerate(chunk_scores)
+                  if score > 0 and br.identity(flat[idx]["root"], flat[idx]["path"]) in allowed]
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        for idx, _score in scored[:cand]:
+            add(flat[idx], lorder, "lexical")
     fused = bs.reciprocal_rank_fusion([vorder, lorder])
-    ranked = sorted(fused, key=lambda kk: fused[kk], reverse=True)
-
-    window = ranked[: max(k * 4, 20)]
-    if use_rerank and window:
+    # Fuse at note level: vector and lexical may support different passages of
+    # the same note. Chunk-only fusion incorrectly treats those as unrelated.
+    doc_vorder = list(dict.fromkeys(key[0] for key in vorder))
+    # BM25 already scored the full eligible corpus. Preserve its note-level
+    # support even outside the materialized chunk window: otherwise a strong
+    # vector/title hit loses a whole channel at an arbitrary candidate cutoff.
+    doc_lorder = list(dict.fromkeys(br.identity(flat[idx]["root"], flat[idx]["path"])
+                                   for idx, _score in scored)) if bm25 else []
+    doc_fused = bs.reciprocal_rank_fusion([doc_vorder, doc_lorder])
+    # A note's title is a useful identity signal, separate from repeated paths
+    # inside incident receipts. Keep this weaker than either primary channel.
+    title_order = []
+    if title_bm25:
+        scores = title_bm25.score(q)
+        title_order = [titles[i] for i in sorted(range(len(titles)), key=lambda i: scores[i], reverse=True)
+                       if scores[i] > 0 and titles[i] in allowed][:cand]
+        for doc, score in bs.reciprocal_rank_fusion([title_order]).items():
+            doc_fused[doc] = doc_fused.get(doc, 0.0) + 0.5 * score
+            candidates_for_doc = by_note.get(doc, [])
+            if candidates_for_doc:
+                idx = max(candidates_for_doc, key=lambda i: chunk_scores[i])
+                add(flat[idx], [], "title")
+    ranked = sorted(pool, key=lambda key: (doc_fused[key[0]], fused.get(key, 0.0)), reverse=True)
+    reranked = False
+    if use_rerank and ranked:
         rr = _get_reranker()
         if rr is not None:
             try:
-                pairs = [(q, pool[key]["chunk"]) for key in window]
-                scores = rr.predict(pairs)
+                # Rerank one best chunk per note so duplicates cannot crowd the window.
+                window = br.select_notes(ranked, pool, max(k * 4, 20))
+                scores = rr.predict([(q, pool[key]["evidence"]) for key in window])
                 window = [key for key, _ in sorted(zip(window, scores),
-                                                   key=lambda x: float(x[1]), reverse=True)]
-                wset = set(window)
-                ranked = window + [k_ for k_ in ranked if k_ not in wset]
-            except Exception as ex:
-                print(f"[rag] rerank failed ({ex}); using fused order", flush=True)
-
-    chosen = ranked[:k]
-    results = []
-    seen_paths = set()
+                          key=lambda pair: float(pair[1]), reverse=True)]
+                ranked = window + [key for key in ranked if key not in set(window)]
+                reranked = True
+            except Exception as exc:
+                errors.append("reranking failed; using fused order")
+                _index_state["last_search_error"] = str(exc)
+        else:
+            errors.append("reranking unavailable; using fused order")
+    chosen = br.select_notes(ranked, pool, k)
+    results, seen = [], set()
     for key in chosen:
         p = pool[key]
-        seen_paths.add(p["path"])
-        results.append({
-            "source": p["path"], "root": p["root"], "path": p["path"],
-            "snippet": p["chunk"][:300], "score": round(float(fused.get(key, 0.0)), 5),
-            "via": "vector+lexical",
-        })
-
+        doc = br.identity(p["root"], p["path"])
+        note = notes[doc]
+        seen.add(doc)
+        warnings = bm.memory_warnings(note["metadata"]) + errors
+        if doc in superseded:
+            warnings.append("superseded by " + ", ".join(": ".join(x) for x in superseded[doc]))
+        results.append({"source": p["path"], "root": p["root"], "path": p["path"],
+                        "snippet": br.note_excerpt(p["evidence"], note, q),
+                        "score": round(float(doc_fused[doc]), 5),
+                        "via": "+".join(m for m, order in (("vector", doc_vorder), ("lexical", doc_lorder), ("title", title_order)) if doc in order),
+                        "reranked": reranked, "metadata": note["metadata"], "warnings": warnings,
+                        "mode": mode})
     if use_expand:
         added = 0
-        for key in chosen:
-            slug = bs.path_to_slug(pool[key]["path"])
-            for lk in LINKS.get(slug, ()):
-                meta = SLUG2META.get(lk)
-                if not meta or meta["path"] in seen_paths:
+        for result in list(results):
+            source = br.identity(result["root"], result["path"])
+            for target in notes[source]["links"]:
+                doc = br.resolve_link(target, source, notes)
+                if doc is None:
+                    result["warnings"].append(f"unresolved or ambiguous link: {target}")
                     continue
-                if roots and meta["root"] not in roots:
+                if doc in seen or doc not in allowed:
                     continue
-                if not bs.folder_match(meta["path"], include, exclude):
-                    continue
-                results.append({
-                    "source": meta["path"], "root": meta["root"], "path": meta["path"],
-                    "snippet": (meta["first"] or "")[:300], "score": 0.0, "via": "link",
-                })
-                seen_paths.add(meta["path"])
+                note = notes[doc]
+                results.append({"source": note["path"], "root": note["root"], "path": note["path"],
+                                "snippet": br.excerpt(note["body"], q), "score": 0.0,
+                                "via": "link", "linked_from": result["path"], "reranked": False,
+                                "metadata": note["metadata"], "warnings": bm.memory_warnings(note["metadata"]),
+                                "mode": mode})
+                seen.add(doc)
                 added += 1
                 if added >= k:
                     break
             if added >= k:
                 break
-
     return results
 
 
 # --- HTTP ------------------------------------------------------------------
 
-app = FastAPI(title="Obsidian RAG Indexer (v2)")
+app = FastAPI(title="Obsidian RAG Indexer", version=br.VERSION)
 
 
 @app.on_event("startup")
@@ -703,9 +777,14 @@ async def _cap_http_threadpool():
 
 @app.get("/health")
 def health():
-    out = {"status": "ok", "model": EMBED_MODEL, "dim": EMBED_DIM,
+    out = {"status": "ok", "version": br.VERSION,
+           "capabilities": ["unique-notes", "prefilter", "current-history", "qualified-links", "body-excerpts"],
+           "index_state": dict(_index_state), "model": EMBED_MODEL, "dim": EMBED_DIM,
            "rerank": RERANK, "default_exclude": list(DEFAULT_EXCLUDE),
-           "lex_docs": len(LEX_DOCS), "links": len(LINKS), "by_root": {}, "chunks": 0}
+           "lex_docs": len(LEX_DOCS), "links": sum(len(n["links"]) for n in list(NOTE_META.values())),
+           "pending_index": len(_watcher_handler._pending) if _watcher_handler else 0,
+           "pending_delete": len(_watcher_handler._deleted) if _watcher_handler else 0,
+           "watcher_active": _watcher_handler is not None, "by_root": {}, "chunks": 0}
     try:
         with _lock:
             out["chunks"] = _get_table().count_rows()
@@ -721,10 +800,13 @@ def health():
 
 @app.get("/search")
 def search(q: str, k: int = 5, include: str = "", exclude: str = "",
-           roots: str = "", rerank: str = "", expand: str = "", candidates: str = ""):
-    return do_search(q, k=k, include=include, exclude=exclude, roots=roots,
-                     rerank=(rerank or None), expand=(expand or None),
-                     candidates=(candidates or None))
+           roots: str = "", rerank: str = "", expand: str = "", candidates: str = "", mode: str = "current"):
+    try:
+        return do_search(q, k=k, include=include, exclude=exclude, roots=roots,
+                         rerank=(rerank or None), expand=(expand or None),
+                         candidates=(candidates or None), mode=mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/reindex")
@@ -749,10 +831,12 @@ def _ensure_dim():
 
 
 def main():
+    global _watcher_handler
     _ensure_dim()
     per_root, embedded, skipped, purged = full_scan()
     print(f"[rag] ready: {per_root}, embedded {embedded}, skipped {skipped}", flush=True)
     handler = VaultHandler()
+    _watcher_handler = handler
     obs = Observer()
     for root in ROOTS:
         if root.get("watch") and os.path.isdir(root["path"]):
