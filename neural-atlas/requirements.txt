@@ -1,0 +1,2 @@
+# Optional CPU classification only; map/server/tests use the Python standard library.
+laya==0.3.6

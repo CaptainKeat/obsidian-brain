@@ -20,8 +20,8 @@ from typing import Any, Mapping
 
 
 DEFAULT_ROOTS = {
-    "vault": Path(os.environ.get("VAULT_PATH", str(Path(__file__).parent / "examples" / "vault"))),
-    "projects": Path(os.environ.get("PROJECTS_PATH", str(Path(__file__).parent / "examples" / "projects"))),
+    "vault": Path(os.environ.get("VAULT_PATH", str(Path(__file__).resolve().parent / "examples" / "vault"))),
+    "projects": Path(os.environ.get("PROJECTS_PATH", str(Path(__file__).resolve().parent / "examples" / "projects"))),
 }
 
 MEMORY_FOLDERS = {

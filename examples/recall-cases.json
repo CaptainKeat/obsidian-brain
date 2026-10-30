@@ -1,0 +1,3 @@
+[
+  {"query": "sample app", "expected": "Projects/sample-app.md", "roots": "vault", "include": "Projects", "mode": "current"}
+]

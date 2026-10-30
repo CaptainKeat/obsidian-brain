@@ -2,7 +2,7 @@
 
 Report-only by default. Flags near-duplicate notes, supersede/stale markers, and old
 notes, then writes a review report into Sessions/. It NEVER deletes or merges - it
-produces a checklist for the user to review. Runs on the machine where the vault lives:
+produces a checklist for the user to action. Run from the checkout:
 
     python consolidate.py                 # -> Sessions/brain-consolidation-<date>.md
     python consolidate.py --days 60       # change the "stale" threshold

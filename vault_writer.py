@@ -11,7 +11,7 @@ API plugin instead (use this only if you want Obsidian-app-mediated writes).
 
 Usage (module):
     from vault_writer import save_note, append_daily
-    save_note("The demo user prefers concise answers", "User stated preference on 2026-06-21.",
+    save_note("The user prefers reviewed results", "User stated preference on 2026-06-21.",
               tags=["preference", "vtuber"])
     append_daily("Talked about the council architecture.")
 
@@ -130,6 +130,6 @@ if __name__ == "__main__":
         # self-test
         p = save_note("VTuber Brain Smoke Test",
                       "If you can read this in RAG search, Layer 1 write-back works. "
-                      "The demo user prefers concise answers in this synthetic example.",
+                      "The user prefers reviewed results with source evidence.",
                       tags=["test", "smoke"])
         print(f"wrote: {p}")

@@ -44,3 +44,9 @@ prep-queue.json
 config/*
 !config/*.example.yaml
 !config/*.example.json
+neural-atlas/config.json
+neural-atlas/data/
+graphify-out/
+*.bak
+*.bak-*
+recall-report*.json

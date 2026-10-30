@@ -1,35 +1,27 @@
-# Obsidian Brain Engine
+# Obsidian Brain
 
-**Give an AI client searchable, structured memory over local Markdown.**
+**A local second brain for AI assistants: searchable Markdown memory, guarded
+write-back, a visual map and an optional CPU companion.**
 
-Obsidian Brain combines keyword and semantic search with linked-note retrieval and controlled write-back. A local HTTP indexer handles search; an MCP adapter exposes search, note reading and memory operations to compatible clients.
+Keep knowledge in ordinary notes. Brain combines keyword and semantic search,
+reads complete sources, and saves evidence-bearing memories through MCP. The
+assistant skill helps resume projects without repeating old work.
 
-| Data format | Search | Client interface | License |
-| --- | --- | --- | --- |
-| Markdown files | BM25 + embeddings; optional reranking | MCP + local HTTP | MIT |
+| Included | What it provides |
+| --- | --- |
+| Brain engine · server 3.0.3 / MCP 3.0.0 | BM25 + vectors, distinct-note results, filters, linked-note expansion and optional reranking |
+| Memory tools | Typed memories, current/history modes, metadata, hash-guarded revisions/backups and feedback |
+| [Assistant skill · 4.0.0](cowork-skill/SKILL.md) | Recall, source verification, checkpoints and evidence rules |
+| [Neural Atlas · 0.1](neural-atlas/README.md) | Interactive graph, source reading, Brain search and optional offline CPU triage |
+| [Graphify integration](docs/GRAPHIFY.md) | Guidance for the separate upstream graph generator |
+| Examples and tests | Synthetic vault, revision demo, graph fixture and regression suites |
 
-## What it does
+New here? Read [how the stack fits together](docs/SECOND-BRAIN.md), then start below.
+No personal notes, weights or production databases are included.
 
-- Searches a Markdown vault and a separate collection of project documents.
-- Combines keyword and vector results, with folder filters and optional linked-note expansion.
-- Reads complete notes or selected sections with source metadata.
-- Saves typed memories such as facts, decisions, procedures and project state.
-- Supports append operations, hash-guarded replacement and retrieval feedback.
+## Quick start
 
-The repository includes a small **synthetic demo vault**. You can inspect the workflow before connecting your own notes.
-
-## Requirements
-
-- [Python](https://www.python.org/downloads/) 3.11 or 3.12 for the documented dependency environment.
-- Disk space for the local database and embedding-model cache.
-- Internet access for installing dependencies and the initial model download.
-- An MCP-compatible client if you want to use the adapter.
-
-The default embedding model is `all-MiniLM-L6-v2`. The indexer is configured for CPU use. Full dependency/model startup has not been freshly integration-tested for this release.
-
-## Install and start the example index
-
-With Python 3.12 installed, run these commands in PowerShell:
+Use Python 3.11 or 3.12. In PowerShell:
 
 ```powershell
 git clone https://github.com/CaptainKeat/obsidian-brain.git
@@ -39,20 +31,30 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe rag_indexer.py
 ```
 
-The first startup may download the embedding model. Leave this terminal running. In another PowerShell window:
+The first run downloads an embedding model and indexes `examples/vault` plus
+`examples/projects`. Leave the terminal running. In another PowerShell window:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5180/health
 Invoke-RestMethod "http://127.0.0.1:5180/search?q=sample&k=3"
 ```
 
-The first request reports indexer health; the second searches the included examples. Stop the indexer with **Ctrl+C**.
+Stop with Ctrl+C. On macOS/Linux, use `python3 -m venv .venv` and `.venv/bin/python`
+instead of the Windows executable. Python entry points are portable; `.bat`, `.ps1`
+and `.vbs` launchers are Windows-specific.
 
-On macOS/Linux, create the environment with `python3 -m venv .venv` and use `.venv/bin/python` for the installation and launch commands.
+Try guarded memory revisions without dependencies or model downloads:
 
-## Connect an MCP client
+```powershell
+python examples/revision_demo.py
+```
 
-Point the client's stdio server configuration at the virtual environment's Python and the absolute path to `obsidian_brain_mcp.py`. For clients that use an `mcpServers` configuration object, the shape is:
+This uses a disposable synthetic vault and checks that stale hashes are rejected.
+
+## Connect an MCP assistant
+
+Start the indexer, then configure your client with the environment's Python and
+absolute adapter path. For clients using `mcpServers`:
 
 ```json
 {
@@ -66,57 +68,83 @@ Point the client's stdio server configuration at the virtual environment's Pytho
 }
 ```
 
-Replace both example paths with your checkout location; the exact configuration format depends on the client. On Windows the adapter can launch `start-rag.bat` if the indexer is down. On other platforms, start the indexer separately first.
+Replace paths for your machine. Tools are `obsidian_search`, `obsidian_get_note`,
+`obsidian_save_memory`, `obsidian_update_note`, `obsidian_record_feedback`,
+`obsidian_save_note` and `obsidian_health`. The Windows adapter can try
+`start-rag.bat` when down; explicit startup is recommended with custom roots.
+Other platforms need explicit startup. No sign-in/startup task is installed.
 
-## Configure your own data
+For Codex, review and install the skill:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/sync_skill.py --apply
+```
+
+Default target: `~/.codex/skills/obsidian-brain`. Supply repeated `--target <directory>`
+for other clients. Files get backups, unrelated files stay intact; omitting
+`--apply` only checks drift. Configure your own routine-write authorization; this
+skill does not inherit anyone else's personal permissions.
+
+## Configure your own vault
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `VAULT_PATH` | Markdown vault to index and read/write | `examples/vault` in this repo |
-| `PROJECTS_PATH` | Separate project-document root | `examples/projects` in this repo |
+| `VAULT_PATH` | Markdown vault, read/write | `examples/vault` in checkout |
+| `PROJECTS_PATH` | Project docs, read-only through MCP | `examples/projects` |
 | `PROJECTS_MAX_DEPTH` | Project scan depth | `2` |
-| `DB_PATH` | Local vector database directory | `lancedb` in this repo |
-| `RAG_PORT` / `RAG_URL` | Indexer port / adapter endpoint | `5180` / `http://127.0.0.1:5180` |
-| `EMBED_MODEL` | Embedding model | `all-MiniLM-L6-v2` |
-| `RAG_RERANK` | Enable optional reranking | `0` |
+| `DB_PATH` | Generated vector database | `lancedb` in checkout |
+| `RAG_PORT` / `RAG_URL` | HTTP port / MCP endpoint | `5180` / `http://127.0.0.1:5180` |
+| `EMBED_MODEL` | CPU embedding model | `all-MiniLM-L6-v2` |
+| `RAG_TORCH_THREADS` | Embedding CPU thread cap | `4` |
+| `RAG_RERANK` | Optional cross-encoder reranking | `0` |
+| `RAG_DEFAULT_EXCLUDE` | Comma-separated folder exclusions | empty |
 
-Set matching `VAULT_PATH` and `PROJECTS_PATH` values for **both** the indexer and MCP adapter. The search index and note reader must point to the same collections. Supply environment variables through your shell or client configuration; the engine does not automatically load a `.env` file.
+Set matching `VAULT_PATH` and `PROJECTS_PATH` for **both** indexer and MCP adapter.
+Shell variables do not automatically transfer to desktop client configuration.
+The engine does not load `.env` files automatically.
 
-## Tests, troubleshooting and status
+Vault Markdown is watched live. Project docs refresh at startup or explicit
+`POST /reindex`. Health exposes scan timestamps/errors. Changing embedding models
+may rebuild the database when dimensions change; use a separate `DB_PATH` to
+experiment. `mode=current` hides explicitly stale/expired/superseded notes;
+`mode=all` includes history. Read full latest applicable notes before acting.
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
+Upgrading an older checkout? Select a fresh `DB_PATH` once for this release's
+chunking fix. Preserve the old index for recovery; ordinary `/reindex` skips
+unchanged files and does not regenerate their existing vectors.
 
-The review candidate adds dependency-free revision and retrieval regression tests using temporary synthetic notes and a fake vector backend. They cover root scoping, path escapes, hash conflicts, retained revision metadata, current/history filtering, note identity, linked retrieval, lexical candidate starvation and meaningful excerpts. The test harness extracts selected production functions with Python AST; it does not import the indexer's model/database startup. These checks do not establish live embedding, model, MCP or watcher integration.
-
-- **Connection refused:** start the indexer and check its terminal output and `/health` endpoint.
-- **No search results:** check the configured roots and wait for initial indexing to finish.
-- **Dependency installation fails:** confirm the Python version and use an isolated environment.
-- **Search and note reads disagree:** confirm both processes use the same root variables.
-
-The HTTP service is for trusted local clients and binds to loopback. It has no public-server authentication layer. See [SECURITY.md](SECURITY.md) before using private data.
-
-Contributions are welcome: reproducible dependency installs, indexer integration tests, cross-platform startup and better documentation. Original source is [MIT licensed](LICENSE); dependencies and model weights retain their own licenses.
-
-
-## Typed revisions and retrieval review candidate
-
-This local candidate extends the September 8 sanitized release. Revisions require
-the hash of the current note, preserve history and support explicit typed metadata.
-Current-mode retrieval excludes stale/superseded records, keeps root identities
-distinct and returns body evidence rather than punctuation-only excerpts. Hybrid
-fusion retains lexical candidates that were previously lost before materialization.
-
-Use synthetic data first. To run the model-free revision demonstration:
+## Add the visual companion
 
 ```powershell
-python examples/revision_demo.py
-python -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe neural-atlas/configure.py
+.\.venv\Scripts\python.exe neural-atlas/atlas.py serve
 ```
 
-The demonstration uses a temporary directory and never connects to the indexer,
-loads a model or writes to a real vault. The indexer, if deliberately started,
-still needs its documented dependencies and model download. No live service or
-embedding test was run for this review candidate. Do not infer production or
-enterprise readiness from these source tests.
+Open <http://127.0.0.1:5190>. This starts a synthetic graph/source demo. The map uses
+Python's standard library. Brain search requires the separate indexer; CPU triage
+requires a separately installed pinned Laya runtime/model and reports unavailable
+weights until configured. See [Atlas setup](neural-atlas/README.md) and
+[Graphify integration](docs/GRAPHIFY.md).
+
+## Checks and status
+
+```powershell
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -B -m unittest discover -s neural-atlas/tests -v
+.\.venv\Scripts\python.exe scripts/check_recall.py --report recall-report.json
+```
+
+The backend has 44 tests for memory/revision contracts, scope, distinct-note retrieval,
+links, history and excerpts. Atlas has 26 temporary-vault, HTTP and supervisor tests
+using a fake classifier. The read-only recall checker accepts JSON `--cases`;
+keep reports outside indexed roots. [Release notes](CHANGELOG.md) record validation.
+
+This is a source release. Fresh dependency installation, model downloads,
+classification quality and another user's sign-in/reboot behavior remain separate
+checks. Dependencies are not a locked cross-platform environment.
+
+For connection errors, check `/health`, scan errors, root configuration and the
+indexer terminal. Allow slow model startup to finish before retrying. Back up private
+generated state separately. Services bind to loopback for trusted local clients;
+they are not authenticated public servers. See [SECURITY.md](SECURITY.md).
+Original code is [MIT](LICENSE); dependencies/models retain their own licenses.

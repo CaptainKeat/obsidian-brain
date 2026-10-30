@@ -6,7 +6,7 @@ import re
 
 import brain_memory as bm
 
-VERSION = "3.0.2"
+VERSION = "3.0.3"
 
 
 def identity(root, path):

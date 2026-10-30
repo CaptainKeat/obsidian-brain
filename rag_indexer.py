@@ -30,7 +30,7 @@ Pure-python search helpers live in brain_search.py (import-safe, unit-tested).
 
 Roots:
   - vault    : the whole Obsidian Knowledge-Base (all .md). LIVE-watched.
-  - projects : configured project docs, shallow only (depth<=2). Refreshed on
+  - projects : examples/projects project docs, shallow only (depth<=2). Refreshed on
                startup + POST /reindex (not live-watched).
 
 Env:
@@ -67,8 +67,8 @@ import brain_search as bs
 import brain_memory as bm
 import brain_retrieval as br
 
-VAULT = os.environ.get("VAULT_PATH", str(Path(__file__).parent / "examples" / "vault"))
-PROJECTS = os.environ.get("PROJECTS_PATH", str(Path(__file__).parent / "examples" / "projects"))
+VAULT = os.environ.get("VAULT_PATH", str(Path(__file__).resolve().parent / "examples" / "vault"))
+PROJECTS = os.environ.get("PROJECTS_PATH", str(Path(__file__).resolve().parent / "examples" / "projects"))
 PROJECTS_MAX_DEPTH = int(os.environ.get("PROJECTS_MAX_DEPTH", "2"))
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "lancedb"))
 PORT = int(os.environ.get("RAG_PORT", "5180"))
@@ -239,22 +239,23 @@ def walk_files(root):
 
 
 def chunk_text(text, size=600, overlap=80):
-    paras = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 20]
-    buf = ""
-    for p in paras:
-        if len(buf) + len(p) + 2 <= size:
-            buf = (buf + "\n\n" + p).strip()
-        else:
-            if buf:
-                yield buf
-            if len(p) > size:
-                for i in range(0, len(p), size - overlap):
-                    yield p[i:i + size]
-                buf = ""
-            else:
-                buf = p
-    if buf:
-        yield buf
+    # Evidence validation requires every chunk to be an exact source substring.
+    # Dropping short paragraphs and joining the rest breaks that invariant.
+    if size <= 0 or not 0 <= overlap < size:
+        raise ValueError("Require size > 0 and 0 <= overlap < size")
+    start = 0
+    while start < len(text):
+        end = min(start + size, len(text))
+        if end < len(text):
+            boundary = text.rfind("\n\n", start + size // 2, end)
+            if boundary >= 0:
+                end = boundary + 2
+        chunk = text[start:end].strip()
+        if chunk:
+            yield chunk
+        if end == len(text):
+            break
+        start = max(start + 1, end - overlap)
 
 
 # --- lexical / graph bookkeeping -------------------------------------------

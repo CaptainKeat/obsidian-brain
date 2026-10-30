@@ -1,0 +1,6 @@
+{
+  "nodes": [
+    {"id": "sample", "label": "Sample App", "source_file": "Projects/sample-app.md", "type": "project"}
+  ],
+  "links": []
+}

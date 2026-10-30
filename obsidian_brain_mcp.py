@@ -1,10 +1,10 @@
 """
-obsidian_brain_mcp.py - MCP server exposing a local Obsidian RAG brain to ANY
+obsidian_brain_mcp.py - MCP server exposing the user's Obsidian RAG brain to ANY
 Cowork / Claude Desktop session.
 
-Installed as a Claude Desktop extension (.mcpb), every new session gets these
-tools automatically (no folder linking needed). It wraps the local RAG indexer
-on :5180 (hybrid keyword+vector, auto-starts at logon, indexes the vault + project docs).
+Configure this stdio adapter in an MCP client to expose the tools below.
+It wraps the local RAG indexer
+on :5180 (hybrid keyword+vector, indexes the configured vault + project docs).
 
 Self-healing: if the RAG server is down (e.g. it crashed or the startup script
 didn't run), this MCP launches start-rag.bat itself and waits for /health.
@@ -48,9 +48,11 @@ def _rag_up(timeout=3):
 def _ensure_rag(wait=60):
     """If the RAG server is down, launch start-rag.bat without a visible console
     (output goes to rag.log) and poll /health until it's up or `wait` seconds pass.
-    The bat has a single-instance guard, so repeated calls cannot double-start it."""
+    Start the indexer explicitly when using custom root configuration."""
     if _rag_up():
         return True
+    if os.name != "nt":
+        return False  # Start the indexer explicitly on macOS/Linux.
     try:
         subprocess.Popen(
             ["cmd", "/c", START_BAT],
@@ -87,7 +89,7 @@ def obsidian_search(query: str, k: int = 6, include: str = "", exclude: str = "V
                     mode: str = "current") -> str:
     """Search the configured Markdown vault and project documents.
     Recall notes, decisions, project context, past setups, gotchas, and patterns - anything
-    he's written down. Hybrid keyword + vector search; each hit shows its source path,
+    the user has written down. Hybrid keyword + vector search; each hit shows its source path,
     retrieval path, and available type/status/freshness metadata.
 
     Args:
