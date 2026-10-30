@@ -1,5 +1,14 @@
 # Automation verification — October 30, 2026
 
+Cross-project update later the same day: all **64 current backend/setup tests**
+passed, including two new retrieval/provenance/scope checks and the updated
+generated-instructions contract. The read-only live HTTP demo retrieved the same
+Sample Alpha lesson at rank 1 from both Alpha and Beta caller directories, then
+read its complete synthetic source. The original sample recall also remained rank 1.
+This confirms shared retrieval and source reading, not autonomous-agent behavior.
+The unchanged 26 Atlas checks last passed in the baseline run below. The baseline
+counts and runtime observations below describe the earlier automation release.
+
 The portable release was tested on Windows with Python 3.11, using disposable
 vaults, project docs, vector databases, model views and ports. The installed private
 Brain/Atlas and their existing scheduler task were left running and unchanged.

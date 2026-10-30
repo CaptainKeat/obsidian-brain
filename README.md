@@ -11,13 +11,91 @@ assistant skill helps resume projects without repeating old work.
 | --- | --- |
 | Brain engine · server 3.0.3 / MCP 3.0.0 | BM25 + vectors, distinct-note results, filters, linked-note expansion and optional reranking |
 | Memory tools | Typed memories, current/history modes, metadata, hash-guarded revisions/backups and feedback |
-| [Assistant skill · 4.0.0](cowork-skill/SKILL.md) | Recall, source verification, checkpoints and evidence rules |
+| [Assistant skill · 4.1.0](cowork-skill/SKILL.md) | Recall, cross-project learning, source verification and useful write-back |
 | [Neural Atlas · 0.1](neural-atlas/README.md) | Interactive graph, source reading, Brain search and optional offline CPU triage |
 | [Graphify integration](docs/GRAPHIFY.md) | Guidance for the separate upstream graph generator |
 | Examples and tests | Synthetic vault, revision demo, graph fixture and regression suites |
 
 New here? Read [how the stack fits together](docs/SECOND-BRAIN.md), then start below.
 No personal notes, weights or production databases are included.
+
+## Cross-project learning: use one shared Brain
+
+The Brain can be a shared knowledge hub for multiple projects and agents. A lesson
+learned in one application can be retrieved while working in another repository.
+The current project folder does not limit the server's search: it searches the
+configured vault and project-document roots.
+
+For example, **Sample Alpha** has a worker-recovery procedure. **Sample Beta** is a
+different application with a similar background-worker problem. Beta's agent can
+find Alpha's lesson by searching the underlying problem, compare the conditions,
+and verify the approach in Beta. The included examples are fictional; they do not
+claim a real application was tested.
+
+To enable this across your own projects:
+
+1. Run **one shared Brain instance** for the projects that should share knowledge.
+   Point every participating MCP client at the same endpoint, `VAULT_PATH` and
+   `PROJECTS_PATH`. The automatic setup generates a matching `mcp-server.json`.
+2. Install the [Brain skill](cowork-skill/SKILL.md). Merge
+   [these project instructions](templates/PROJECT-AGENTS.md) into each participating
+   project's `AGENTS.md`, preserving existing instructions. Automatic setup also
+   puts a copy at `<state>/PROJECT-INSTRUCTIONS.md`; it does not edit your repos.
+3. Tell the agent your memory-write preference. To enable routine learning, you
+   can explicitly instruct it: "During my authorized project work, save useful
+   decisions, verified fixes, failed attempts and reusable lessons to the shared
+   Brain. Read-only, private and no-save instructions override this preference."
+4. Recall the current project's checkpoint, then search the **problem pattern**
+   across shared lessons. Remove the current project-name/folder restriction for
+   this second search. Read the full lesson and check its evidence, platform,
+   version and applicability before using it.
+5. Verify the approach in the target project. Save its actual outcome in that
+   project's checkpoint, and update the reusable lesson when there is meaningful
+   new evidence. Keep project-specific settings out of a universal procedure.
+
+A useful vault layout is:
+
+```text
+Cowork/Projects/    # Per-project checkpoints and current state
+Cowork/Patterns/    # Reusable procedures
+Cowork/Gotchas/     # Failed approaches, pitfalls and retry conditions
+Cowork/Examples/    # Worked examples with evidence
+```
+
+Folder names are configurable conventions. Typed memory saves use these Cowork
+folders by default. Preserve the originating project, evidence/sources,
+`applies_when`, limitations and links to relevant checkpoints. Read an existing
+lesson before revising it with its current hash rather than adding duplicates.
+
+Ask your MCP-connected assistant to make these calls against the sample vault:
+
+```text
+obsidian_search(query="Sample Beta", roots="vault", include="Projects", mode="current")
+obsidian_search(query="worker crash recovery persistent pause", roots="vault", include="Patterns,Gotchas,Examples", mode="current")
+obsidian_get_note(path="Cowork/Patterns/owned-worker-recovery.md", root="vault")
+```
+
+Or, with the example indexer running, try the read-only demonstration:
+
+```powershell
+.\.venv\Scripts\python.exe examples/cross_project_demo.py
+```
+
+It changes between two disposable caller directories and retrieves the same
+Alpha-origin lesson through HTTP, then reads its complete example source. Use
+`--url http://127.0.0.1:5180` to select the example indexer. It does not save notes
+or evaluate whether an autonomous agent follows the workflow correctly.
+
+Graphify reveals possible connections; Atlas provides a map and review suggestions.
+The transfer happens when an agent retrieves, checks and applies the lesson. The
+Brain does not automatically ingest every chat or retrain a model. Sharing lessons
+does not authorize editing another project's files or starting its services.
+**Search filters are not access controls**: use separate vaults/Brain instances for
+projects that must not share information.
+
+Already installed? Pull this update, rerun `scripts/sync_skill.py --apply`, and merge
+the template into your project instructions. Keep your existing shared MCP entry
+and vault; no model replacement, index rebuild or new per-project server is needed.
 
 ## Quick start
 
@@ -137,9 +215,10 @@ weights until configured. See [Atlas setup](neural-atlas/README.md) and
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -B -m unittest discover -s neural-atlas/tests -v
 .\.venv\Scripts\python.exe scripts/check_recall.py --report recall-report.json
+.\.venv\Scripts\python.exe examples/cross_project_demo.py
 ```
 
-The backend and automation suites have 62 tests for memory/revision contracts,
+The backend and automation suites have 64 tests for memory/revision contracts,
 retrieval, incremental refresh, rollback, guarded digest updates and startup ownership.
 Atlas has 26 temporary-vault, HTTP and supervisor tests
 using a fake classifier. The read-only recall checker accepts JSON `--cases`;

@@ -111,6 +111,8 @@ class StackAutomationTests(unittest.TestCase):
         mcp=gr.read(self.state/'mcp-server.json')['mcpServers']['obsidian-brain']
         self.assertEqual(mcp['env']['VAULT_PATH'],str(self.vault.resolve()))
         self.assertEqual(mcp['env']['RAG_AUTO_START'],'0')
+        self.assertEqual((self.state/'PROJECT-INSTRUCTIONS.md').read_bytes(),
+                         (Path(setup_stack.__file__).resolve().parents[1]/'templates/PROJECT-AGENTS.md').read_bytes())
         before=(self.state/'stack.json').read_bytes()
         with self.assertRaises(FileExistsError): setup_stack.configure(**args)
         self.assertEqual((self.state/'stack.json').read_bytes(),before)

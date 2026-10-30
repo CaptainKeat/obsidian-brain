@@ -2,7 +2,7 @@
 name: obsidian-brain
 description: Recall project context and maintain a local Markdown second brain through Obsidian Brain MCP tools. Use for project history, prior decisions, recurring problems and meaningful memory write-back.
 metadata:
-  version: "4.0.0"
+  version: "4.1.0"
 ---
 
 # Obsidian Brain
@@ -33,6 +33,29 @@ user instructions and verified live facts override historical memory.
   sides of conflicts. A current result is not automatically verified.
 
 See [recall patterns](references/recall-and-resume.md).
+
+## Transfer learning between projects
+
+Use one shared Brain endpoint and vault across participating project contexts.
+Before implementing a meaningful fix or making an architectural choice, search the
+underlying problem as well as the current project's checkpoint. A useful lesson
+may come from a different project: remove the current project-name/folder
+restriction for a second search in `Patterns,Gotchas,Examples`, or the whole vault
+when needed. Keep requested exclusions and actual access boundaries in effect.
+
+Read the full lesson and its originating project/evidence. Check platform, version,
+constraints, freshness and applicability before adopting it. Test the approach in
+the target project; evidence from the origin does not prove success in the target.
+An unrelated task with no plausible transfer does not need an exhaustive search.
+
+When authorized to save, keep project-specific state in its checkpoint and distill
+generalizable learning into a linked shared procedure/gotcha/example. Include the
+origin, evidence, applicability, limits and retry conditions; search before adding
+duplicates. Record a successful transfer in the target checkpoint after verifying
+it. Access to lessons does not grant permission to edit or control another project.
+
+See [cross-project workflow](references/cross-project-learning.md) for examples and
+owner-controlled instructions to install in participating projects.
 
 ## Save useful learning within the user's authorization
 

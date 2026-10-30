@@ -81,6 +81,12 @@ client. Configure your own memory-write preference; personal permissions are not
 copied from this repository's author. Reconnect the MCP client after changing its
 server configuration and verify `obsidian_health` plus a known-note search.
 
+For multiple projects, reuse this same MCP server entry and shared vault. Merge
+the generated `<state>/PROJECT-INSTRUCTIONS.md` into each project's `AGENTS.md`.
+The installed skill now explicitly searches shared problem patterns across project
+boundaries and verifies transfers before saving target-project outcomes. See the
+[README cross-project workflow](../README.md#cross-project-learning-use-one-shared-brain).
+
 ## 3. Run and verify the first graph
 
 ```powershell

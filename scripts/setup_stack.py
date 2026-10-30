@@ -50,6 +50,7 @@ def configure(state, vault, projects, python, graph_python=None, atlas_python=No
         'env':{'VAULT_PATH':str(vault),'PROJECTS_PATH':str(projects),
                'RAG_URL':f'http://127.0.0.1:{brain_port}','RAG_AUTO_START':'0'}}}}
     (state/'mcp-server.json').write_text(json.dumps(mcp,indent=2),encoding='utf-8')
+    shutil.copy2(repo/'templates/PROJECT-AGENTS.md',state/'PROJECT-INSTRUCTIONS.md')
     if model_path:
         import subprocess
         subprocess.run([config['atlas_python'],str(atlas/'prepare_runtime.py')],check=True)
