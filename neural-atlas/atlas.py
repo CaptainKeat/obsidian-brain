@@ -405,7 +405,7 @@ class Store:
             counts = {r[0]: r[1] for r in db.execute("SELECT state,COUNT(*) FROM jobs GROUP BY state")}
             notes = db.execute("SELECT COUNT(*) FROM notes WHERE present=1").fetchone()[0]
             audit = db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-        return {"app": "neural-atlas", "pid": os.getpid(), "version": VERSION, "paused": self.get("paused", False), "runtime": dict(self.runtime), "jobs": counts, "notes": notes, "reviews": audit,
+        return {"app": "neural-atlas", "pid": os.getpid(), "instance_id": self.config.get("instance_id"), "version": VERSION, "paused": self.get("paused", False), "runtime": dict(self.runtime), "jobs": counts, "notes": notes, "reviews": audit,
                 "last_scan": self.get("last_scan"), "graph": self.get("graph_import"), "model_revision": self.config["model_revision"], "brain_url": self.config["brain_url"], "worker_policy": {"batch_size": self.config["batch_size"], "batch_interval": self.config["batch_interval"], "scan_interval": self.config["scan_interval"], "offline": True, "gpu": False}}
 
 

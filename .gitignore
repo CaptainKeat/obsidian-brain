@@ -50,3 +50,4 @@ graphify-out/
 *.bak
 *.bak-*
 recall-report*.json
+.brain-stack/

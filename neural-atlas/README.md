@@ -78,7 +78,8 @@ The scripts use PowerShell 7's `-NoProxy`; use the Python command for other shel
 An optional `atlas_supervisor.py --root <absolute-atlas-directory>` can be registered
 with your own user-session scheduler. It polls every 30 seconds, reuses healthy
 workers and backs off after failures. Saved pause/intentional Stop prevents restart.
-No scheduled task is installed by this repository. Test your own restart/sign-in
+The [optional Windows stack installer](../docs/AUTOMATIC-SETUP.md) installs per-user
+sign-in tasks, worker recovery and daily graph refresh. Test your own restart/sign-in
 behavior before relying on it; do not register it using someone else's paths.
 
 ## Verification and limits

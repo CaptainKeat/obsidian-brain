@@ -1,0 +1,3 @@
+# Install into your Brain venv; optional Laya requirements are separate.
+-r requirements.txt
+graphifyy==0.5.7

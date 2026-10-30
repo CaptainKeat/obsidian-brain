@@ -51,6 +51,8 @@ def _ensure_rag(wait=60):
     Start the indexer explicitly when using custom root configuration."""
     if _rag_up():
         return True
+    if os.environ.get("RAG_AUTO_START", "1") == "0":
+        return False  # A configured external supervisor owns startup/recovery.
     if os.name != "nt":
         return False  # Start the indexer explicitly on macOS/Linux.
     try:

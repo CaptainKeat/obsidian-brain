@@ -21,12 +21,16 @@ No personal notes, weights or production databases are included.
 
 ## Quick start
 
+For the complete Windows background setup—including sign-in startup, crash recovery
+and daily semantic graph refresh—follow [Automatic setup](docs/AUTOMATIC-SETUP.md).
+
 Use Python 3.11 or 3.12. In PowerShell:
 
 ```powershell
 git clone https://github.com/CaptainKeat/obsidian-brain.git
 cd obsidian-brain
 py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install torch==2.12.1 --index-url https://download.pytorch.org/whl/cpu
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe rag_indexer.py
 ```
@@ -72,7 +76,8 @@ Replace paths for your machine. Tools are `obsidian_search`, `obsidian_get_note`
 `obsidian_save_memory`, `obsidian_update_note`, `obsidian_record_feedback`,
 `obsidian_save_note` and `obsidian_health`. The Windows adapter can try
 `start-rag.bat` when down; explicit startup is recommended with custom roots.
-Other platforms need explicit startup. No sign-in/startup task is installed.
+Other platforms need explicit startup. The basic commands do not install tasks;
+the optional [Windows installer](docs/AUTOMATIC-SETUP.md) adds them explicitly.
 
 For Codex, review and install the skill:
 
@@ -134,14 +139,17 @@ weights until configured. See [Atlas setup](neural-atlas/README.md) and
 .\.venv\Scripts\python.exe scripts/check_recall.py --report recall-report.json
 ```
 
-The backend has 44 tests for memory/revision contracts, scope, distinct-note retrieval,
-links, history and excerpts. Atlas has 26 temporary-vault, HTTP and supervisor tests
+The backend and automation suites have 62 tests for memory/revision contracts,
+retrieval, incremental refresh, rollback, guarded digest updates and startup ownership.
+Atlas has 26 temporary-vault, HTTP and supervisor tests
 using a fake classifier. The read-only recall checker accepts JSON `--cases`;
 keep reports outside indexed roots. [Release notes](CHANGELOG.md) record validation.
 
-This is a source release. Fresh dependency installation, model downloads,
-classification quality and another user's sign-in/reboot behavior remain separate
-checks. Dependencies are not a locked cross-platform environment.
+This source release passed a fresh Windows dependency install, default embedding
+startup, CPU inference and real scheduled-task checks. First-time Laya weight
+download, classification quality and an actual sign-in/reboot remain separate checks.
+Core versions are pinned; [verification details](docs/AUTOMATION-VERIFICATION.md)
+record the tested scope. Other platforms still need their own checks.
 
 For connection errors, check `/health`, scan errors, root configuration and the
 indexer terminal. Allow slow model startup to finish before retrying. Back up private

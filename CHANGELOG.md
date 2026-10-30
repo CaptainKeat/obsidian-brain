@@ -1,6 +1,23 @@
 # Release notes
 
-## 2026-10-30 · second-brain source refresh
+## 2026-10-30 · automatic startup and semantic graph refresh
+
+- Added a portable stack configurator, generated MCP entry, per-user Windows
+  sign-in tasks for Brain/Atlas, crash recovery, persistent stop/pause handling,
+  a daily semantic Graphify task and scoped removal with retained state.
+- Added SHA-256 change detection, unchanged-run skipping, source coverage checks,
+  staging/backups/rollback, generated graph/wiki/Obsidian outputs and optional
+  hash-guarded Brain Map publication into the vault.
+- Added explicit pinned Laya download guidance, a readiness checker and full setup
+  instructions. Pinning compatible core/model dependencies fixes the fresh-install
+  MCP 2.x/FastMCP incompatibility discovered during testing.
+- All 88 tests passed in an isolated fresh environment. Real scheduler launch,
+  semantic extraction, incremental/no-op behavior, worker recovery, pause retention,
+  generated-digest recall, default embedding startup and actual CPU Laya inference
+  passed. No reboot/sign-out or first-time Laya weight download was performed.
+  See [verification details](docs/AUTOMATION-VERIFICATION.md).
+
+## 2026-10-30 · earlier second-brain source refresh
 
 - Updated retrieval and typed-memory engine: server 3.0.3, compatible MCP 3.0.0
   schemas, history, qualified links, retained revisions, lexical fusion and excerpts.

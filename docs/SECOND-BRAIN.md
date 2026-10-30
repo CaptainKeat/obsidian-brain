@@ -13,6 +13,8 @@ MCP tools work. Add Graphify and Atlas when graph navigation is useful. The Brai
 does not depend on either companion, and Atlas suggestions do not change search
 results or canonical notes.
 
+For automatic background operation, follow [Windows startup and daily refresh](AUTOMATIC-SETUP.md).
+
 ## Everyday workflow
 
 1. Search the project identity and concrete problem before exploring the code again.

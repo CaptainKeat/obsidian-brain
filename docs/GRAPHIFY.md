@@ -1,5 +1,9 @@
 # Graphify integration
 
+The [automatic setup guide](AUTOMATIC-SETUP.md) now includes a tested daily semantic
+refresh runner using pinned Graphify 0.5.7 and the authenticated Codex CLI. The
+manual upstream workflow below remains useful for other source formats.
+
 [Graphify](https://github.com/Graphify-Labs/graphify) is a separate upstream project.
 It is not vendored or relicensed here. Follow its current install instructions and
 license; the Python distribution is `graphifyy` (two y's).

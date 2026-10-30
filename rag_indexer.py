@@ -778,7 +778,7 @@ async def _cap_http_threadpool():
 
 @app.get("/health")
 def health():
-    out = {"status": "ok", "version": br.VERSION,
+    out = {"status": "ok", "version": br.VERSION, "pid": os.getpid(), "instance_id": os.environ.get("RAG_INSTANCE_ID"),
            "capabilities": ["unique-notes", "prefilter", "current-history", "qualified-links", "body-excerpts"],
            "index_state": dict(_index_state), "model": EMBED_MODEL, "dim": EMBED_DIM,
            "rerank": RERANK, "default_exclude": list(DEFAULT_EXCLUDE),
