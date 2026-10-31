@@ -74,6 +74,9 @@ def save_note(title, content, tags=None, folder=None, source="vtuber"):
     fname = f"{_slug(title)}.md"
     rel = os.path.join(folder, fname)
 
+    from brain_graph_links import Catalog, navigation
+    content = navigation(content, Catalog(VAULT), self_path=Path(rel).as_posix())[0]
+
     if OBSIDIAN_API_KEY:
         body = f"\n\n## {_now()}\n\n{content}\n"
         # REST API has an append endpoint; fall back to PUT full doc
@@ -89,15 +92,24 @@ def save_note(title, content, tags=None, folder=None, source="vtuber"):
         except Exception as e:
             print(f"[vault_writer] REST write failed ({e}); falling back to file", file=sys.stderr)
 
-    # Direct filesystem write
-    target = VAULT / folder / fname
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
-        with target.open("a", encoding="utf-8") as f:
-            f.write(f"\n\n## {_now()}\n\n{content}\n")
-    else:
-        target.write_text(_frontmatter(title, tags, source) + f"\n## {_now()}\n\n{content}\n",
-                          encoding="utf-8")
+    # Serialize legacy appends with typed saves and preserve the existing body.
+    import brain_memory as bm
+    from brain_graph_links import prepare_memory
+    target = bm.resolve_note_path(rel, roots={"vault": VAULT}, must_exist=False)
+    with bm._note_lock(target):
+        original = target.read_text(encoding="utf-8") if target.exists() else ""
+        metadata, _ = bm.parse_frontmatter(original)
+        full = (original if original else _frontmatter(title, tags, source))
+        full += f"\n\n## {_now()}\n\n{content}\n"
+        full = prepare_memory(full, VAULT, project=metadata.get("project"),
+                              sources=metadata.get("sources", []), self_path=Path(rel).as_posix())
+        if original and target.read_text(encoding="utf-8") != original:
+            raise RuntimeError("Note changed while saving; retry from the current note")
+        if original:
+            import shutil
+            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            shutil.copy2(target, target.with_name(target.name + ".bak-" + stamp))
+        bm._atomic_write(target, full)
     return str(target)
 
 

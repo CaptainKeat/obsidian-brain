@@ -11,7 +11,7 @@ assistant skill helps resume projects without repeating old work.
 | --- | --- |
 | Brain engine · server 3.0.3 / MCP 3.0.0 | BM25 + vectors, distinct-note results, filters, linked-note expansion and optional reranking |
 | Memory tools | Typed memories, current/history modes, metadata, hash-guarded revisions/backups and feedback |
-| [Assistant skill · 4.1.0](cowork-skill/SKILL.md) | Recall, cross-project learning, source verification and useful write-back |
+| [Assistant skill · 4.2.0](cowork-skill/SKILL.md) | Recall, cross-project learning, source verification and useful write-back |
 | [Neural Atlas · 0.1](neural-atlas/README.md) | Interactive graph, source reading, Brain search and optional offline CPU triage |
 | [Graphify integration](docs/GRAPHIFY.md) | Guidance for the separate upstream graph generator |
 | Examples and tests | Synthetic vault, revision demo, graph fixture and regression suites |
@@ -235,3 +235,14 @@ indexer terminal. Allow slow model startup to finish before retrying. Back up pr
 generated state separately. Services bind to loopback for trusted local clients;
 they are not authenticated public servers. See [SECURITY.md](SECURITY.md).
 Original code is [MIT](LICENSE); dependencies/models retain their own licenses.
+
+## Native Obsidian graph connections
+
+Typed memories now link to a stable hub for their explicit project label, and to
+verified existing vault-note sources. This keeps native graph navigation connected
+while preserving Brain metadata identities and historical content. Semantic search
+and Graphify remain separate from Obsidian's internal-link graph.
+
+Existing users: read the [safe update and graph repair guide](docs/GRAPH-LINK-REPAIR.md).
+It includes a dry-run historical migration, external backups, hash-checked rollback,
+client reconnection and validation. No database/model rebuild is required.

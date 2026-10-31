@@ -333,8 +333,17 @@ def update_note(
             backup = None
             label = re.sub(r"[\r\n#]+", " ", heading).strip() or "Update"
             new_text = original.rstrip() + f"\n\n## {label} — {_now().isoformat(timespec='seconds')}\n\n{body.strip()}\n"
+        from brain_graph_links import prepare_memory
+        new_text = prepare_memory(new_text, (roots or DEFAULT_ROOTS)["vault"],
+                                  project=metadata.get("project"),
+                                  sources=metadata.get("sources", []),
+                                  supersedes=metadata.get("supersedes", []),
+                                  self_path=Path(path).as_posix())
         if _hash(target.read_text(encoding="utf-8")) != original_hash:
             raise RuntimeError("Note changed while updating; fetch it again before updating")
+        if backup is None:
+            backup = target.with_suffix(target.suffix + ".bak-" + _now().strftime("%Y%m%d-%H%M%S-%f"))
+            shutil.copy2(target, backup)
         _atomic_write(target, new_text)
         result = note_info(path, root, roots)
         result.update({"mode": mode, "previous_sha256": original_hash, "backup": str(backup) if backup else None})
@@ -417,6 +426,15 @@ def save_memory(
                 content += f"\n## Evidence\n\n{evidence.strip()}\n"
             if sources:
                 content += "\n## Sources\n\n" + "\n".join(f"- {source}" for source in sources) + "\n"
+        # Keep metadata identities intact; generate Obsidian-compatible body links.
+        from brain_graph_links import prepare_memory
+        effective = dict(old)
+        effective.update(metadata)
+        content = prepare_memory(content, roots["vault"],
+                                 project=effective.get("project"),
+                                 sources=effective.get("sources", []),
+                                 supersedes=effective.get("supersedes", []),
+                                 self_path=relative.as_posix())
         # Recheck after preparing the content to catch non-cooperating editor writes.
         if original and _hash(target.read_text(encoding="utf-8")) != _hash(original):
             raise RuntimeError("Note changed while saving; fetch it again before saving")

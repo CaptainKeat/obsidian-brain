@@ -2,7 +2,7 @@
 name: obsidian-brain
 description: Recall project context and maintain a local Markdown second brain through Obsidian Brain MCP tools. Use for project history, prior decisions, recurring problems and meaningful memory write-back.
 metadata:
-  version: "4.1.0"
+  version: "4.2.0"
 ---
 
 # Obsidian Brain
@@ -97,3 +97,19 @@ and opt-in reranking. See [maintenance](references/maintenance.md) and
 Graphify and [Neural Atlas](references/neural-atlas.md) provide discovery context.
 Edges and suggestions require current source verification before canonical writes.
 Normal Brain recall remains available independently.
+
+## Keep native Obsidian links connected
+
+- Give typed saves the exact explicit `project` label. The writer creates/reuses
+  its stable project hub; different scopes are not merged by name similarity.
+- Put existing root-qualified checkpoint/lesson identities in `sources` when
+  relevant. The writer preserves metadata and adds verified vault-relative body
+  links. Keep `projects:` references as Brain identities; they are outside the vault.
+- In note prose use `[[Cowork/Projects/existing-slug|Readable title]]`, selecting a
+  verified existing destination. `vault:` is a Brain namespace, not an Obsidian
+  path. A `title:` field, tag, chat ID or project value alone is not a graph edge.
+- Do not guess a missing target, infer links solely from similar names, rewrite
+  historical claims, or merge project/version notes to improve graph appearance.
+- For authorized historical repairs and client updates, read
+  [native graph repair](references/graph-links.md). Preview, back up, check hashes,
+  preserve concurrent edits, and verify real source links after applying.

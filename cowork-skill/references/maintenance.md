@@ -16,3 +16,5 @@ Counts and mtimes do not prove indexed freshness. After schema changes, reconnec
 only the affected MCP client. After HTTP implementation changes, restart only its
 verified listener when authorized. Do not restart healthy services or replace
 embedding models to compensate for query-usage issues.
+
+For native Obsidian links, see [graph link repair](graph-links.md).

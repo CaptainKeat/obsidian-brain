@@ -1,5 +1,16 @@
 # Release notes
 
+## 2026-10-31 — connected native graph memories
+
+- Added explicit-project navigation hubs and verified related-note body links to
+  typed saves, preserving raw metadata identities and retained revisions.
+- Added exact qualified/title-link repair, guarded legacy appends, skill 4.2.0 and
+  an optional preview-first historical migration with external backups, hashes,
+  concurrent-edit refusal and receipt-based rollback.
+- Documented client reconnection, safe existing-user updates and the distinction
+  between native Obsidian links and semantic graphs. No index/model rebuild.
+
+
 ## 2026-10-30 · shared learning across projects
 
 - Made cross-project problem-pattern retrieval and evidence-checked transfer

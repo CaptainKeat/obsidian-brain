@@ -27,3 +27,10 @@ Access to another project's lessons does not authorize editing that project's
 files, starting its services or publishing its data. Do not store credentials,
 raw chats or unrelated private details. Use a separate vault/Brain when projects
 must not share information; search filters are not access-control boundaries.
+
+When saving a typed memory, supply the exact explicit project label and relevant
+existing vault checkpoint/lesson identities in sources. The writer adds a stable
+project-hub link and verified related-note links. In prose use vault-relative
+Obsidian links, not Brain `vault:` targets. Preserve different project/version
+identities; do not infer links, merge notes or run a historical migration without
+an owner instruction. After writer updates, reconnect affected MCP clients.
