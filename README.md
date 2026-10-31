@@ -246,3 +246,5 @@ and Graphify remain separate from Obsidian's internal-link graph.
 Existing users: read the [safe update and graph repair guide](docs/GRAPH-LINK-REPAIR.md).
 It includes a dry-run historical migration, external backups, hash-checked rollback,
 client reconnection and validation. No database/model rebuild is required.
+For an agent-assisted upgrade, use the guide's
+[copyable update and reconciliation prompt](docs/GRAPH-LINK-REPAIR.md#copy-this-prompt-to-your-ai-agent).

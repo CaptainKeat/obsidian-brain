@@ -79,3 +79,77 @@ Synthetic regression tests cover hub creation, metadata identity retention,
 qualified/unique-title repairs, ambiguous targets, traversal/cross-root refusal,
 protected code/metadata, idempotence, and concurrent-edit-safe rollback. They do not
 establish Obsidian runtime cache behavior on every platform.
+
+## Copy this prompt to your AI agent
+
+Replace placeholders with discovered, verified paths. This prompt authorizes local
+updates and reversible repairs; it does not authorize publishing private data.
+
+```text
+Update my existing Obsidian Brain installation and safely reconcile its old native
+Obsidian linking issues. I authorize verified local code/skill updates, external
+backups, and reversible repairs within my actual vault. Proceed with clear cases;
+leave ambiguous relationships unchanged and report them.
+
+1. Locate the real active vault, Brain checkout, configured Python environment,
+   indexed roots, MCP clients and installed skill copies. Read applicable local
+   instructions. Verify the checkout's remotes against
+   https://github.com/CaptainKeat/obsidian-brain; preserve legitimate forks and
+   custom configuration. Inspect Git status and local changes before updating.
+   Back up code/config first. Use a fast-forward update only when safe; do not
+   reset, force-pull, discard changes, switch remotes or overwrite customizations.
+
+2. Read docs/GRAPH-LINK-REPAIR.md in the updated checkout. Use the installation's
+   configured Python environment and existing pinned dependencies. Run:
+   python -B -m unittest discover -s tests -v
+   Install the updated skill with:
+   python scripts/sync_skill.py --apply --target "<SKILL_DIR>"
+   Repeat --target for each verified installation. Preserve unrelated files,
+   project instructions and my memory-write policy. Merge relevant template
+   guidance instead of replacing existing project instructions.
+
+3. Create a private repair directory outside the vault AND every indexed root.
+   Resolve all placeholders to real absolute paths. Preview without editing:
+   python scripts/repair_graph_links.py --vault "<VAULT>" --report "<REPAIR_DIR>/preview.json"
+   Inspect planned changes, hub labels, exact destination mappings and unresolved
+   targets. The report can contain note text: keep it local and private.
+
+4. Repair only explicit project assignments and existing, unambiguous links.
+   Preserve project/version/workstream identities, note bodies, metadata, chat
+   references and historical claims. Do not infer relationships from similar
+   wording alone. Do not rename, merge or delete existing notes; create empty
+   target notes; import generated Graphify notes; or change graph settings.
+   Keep ambiguous/missing mappings unchanged. Avoid simultaneous editing of the
+   affected notes. Apply verified repairs with a fresh backup directory:
+   python scripts/repair_graph_links.py --vault "<VAULT>" --apply --backup-dir "<REPAIR_DIR>/run-001"
+   Keep all original backups and receipt.json. If hashes conflict or execution
+   is interrupted, inspect the receipt and actual file hashes before retrying.
+   Use a fresh preview and backup directory for remaining changes; never blindly
+   repeat writes or overwrite later user/agent edits. Preserve every receipt.
+
+5. Reconnect affected Brain MCP clients so they load the updated writer. Coordinate
+   reconnects with active work; do not kill unrelated processes. Do not rebuild
+   databases, change embedding models, or restart the HTTP service solely for this
+   writer update. Check health, watcher errors and pending indexing; do not equate
+   a healthy endpoint with complete index freshness.
+
+6. Run another preview: unchanged inputs should propose zero edits. Verify raw
+   metadata identities and historical content are preserved and every new
+   navigation destination exists. In Obsidian open Brain Project Map.md, follow
+   representative project/session/checkpoint links, and check hub Backlinks and
+   the local graph. If an existing file offers to be created, save any open edits
+   and reload Obsidian's cache with Reload app without saving, then recheck.
+   Do not bypass security warnings or claim runtime checks you could not perform.
+
+7. Report the before/after code revision, files and link/hub counts, exact tests,
+   remaining ambiguous mappings, index backlog, client reconnects and limits.
+   Give backup/receipt paths and rollback instructions:
+   python scripts/repair_graph_links.py --rollback "<REPAIR_DIR>/run-001/receipt.json"
+   For multiple runs, roll back receipts newest first. Rollback must preserve
+   later edits as conflicts. Do not run rollback unless needed or requested.
+
+Do not upload or publish my vault, raw chats, credentials, indexes, databases,
+models, backups or repair reports. Do not push Git commits. If a required action
+is denied or needs approval, stop that action, explain the exact blocker and
+continue independent safe work; never bypass the restriction.
+```

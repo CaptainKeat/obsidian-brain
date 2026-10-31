@@ -9,6 +9,8 @@
   concurrent-edit refusal and receipt-based rollback.
 - Documented client reconnection, safe existing-user updates and the distinction
   between native Obsidian links and semantic graphs. No index/model rebuild.
+- Added a copyable agent prompt for verified updates, historical reconciliation,
+  privacy, conflict handling, rollback and honest runtime validation.
 
 
 ## 2026-10-30 · shared learning across projects
